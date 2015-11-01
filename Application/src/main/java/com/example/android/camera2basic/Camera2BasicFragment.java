@@ -30,6 +30,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
+import android.graphics.PointF;
 import android.graphics.RectF;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
@@ -52,10 +53,12 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.support.v13.app.FragmentCompat;
+import android.util.FloatMath;
 import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -67,6 +70,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
+import java.net.Socket;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
@@ -76,6 +84,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -88,7 +97,8 @@ public class Camera2BasicFragment extends Fragment
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
     private static final int REQUEST_CAMERA_PERMISSION = 1;
     private static final String FRAGMENT_DIALOG = "dialog";
-    private ImageView imageDisplay;
+    //private ImageView imageDisplay;
+    private CustomImageVIew imageDisplay;
     private String lastImageSaved;
 
     static {
@@ -133,7 +143,8 @@ public class Camera2BasicFragment extends Fragment
      * 128.2.213.223:8888
      *
      */
-    private static JavaTCPStreamClient tcpClient = new JavaTCPStreamClient();
+    private static Socket socket;
+    private static OutputStream os;
 
     /**
      * {@link TextureView.SurfaceTextureListener} handles several lifecycle events on a
@@ -417,8 +428,11 @@ public class Camera2BasicFragment extends Fragment
         view.findViewById(R.id.picture).setOnClickListener(this);
         //view.findViewById(R.id.info).setOnClickListener(this);
         mTextureView = (AutoFitTextureView) view.findViewById(R.id.texture);
-        imageDisplay = (ImageView)view.findViewById(R.id.imgView);
-        new SocketConnectTask().execute();
+        //imageDisplay = (ImageView)view.findViewById(R.id.imgView);
+        imageDisplay = (CustomImageVIew)view.findViewById(R.id.imgView);
+        //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
+        imageDisplay.setImageResource(R.drawable.app);
+        //new SocketConnectTask().execute();
     }
 
     @Override
@@ -520,6 +534,7 @@ public class Camera2BasicFragment extends Fragment
                 // garbage capture data.
                 mPreviewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
                         width, height, largest);
+                //mPreviewSize = new Size(100, 100);
 
                 // We fit the aspect ratio of TextureView to the size of preview we picked.
                 int orientation = getResources().getConfiguration().orientation;
@@ -636,6 +651,8 @@ public class Camera2BasicFragment extends Fragment
             mPreviewRequestBuilder
                     = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             mPreviewRequestBuilder.addTarget(surface);
+            mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, new Rect(1680, 1260, 2480, 1860));
+            //mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION,new Rect(0, 0, 600, 800));
 
             // Here, we create a CameraCaptureSession for camera preview.
             mCameraDevice.createCaptureSession(Arrays.asList(surface, mImageReader.getSurface()),
@@ -828,7 +845,29 @@ public class Camera2BasicFragment extends Fragment
     public void onClick(View view) {
         switch (view.getId()) {
             case R.id.picture: {
-                takePicture();
+                // connect to TCP server
+                new SocketConnectTask().execute();
+
+                for (int i = 0 ; i < 5 ; ++ i) {
+                    takePicture();
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                String mPath = null;
+                try {
+                    mPath = new SocketReceiveTask().execute().get();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } catch (ExecutionException e) {
+                    e.printStackTrace();
+                }
+                if (mPath != null) {
+                    Bitmap bitmap = BitmapFactory.decodeFile(mPath);
+                    imageDisplay.setImageBitmap(bitmap);
+                }
                 //takeScreenshot();
                 //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
                 //imageDisplay.setImageBitmap(bitmap);
@@ -925,21 +964,34 @@ public class Camera2BasicFragment extends Fragment
 
 
                 FileOutputStream outputStream = new FileOutputStream(filePath);
-                ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                //PipedOutputStream bout = new PipedOutputStream();
+                //InputStream in = new PipedInputStream();
+                //bout.connect((PipedInputStream)in);
+
                 int quality = 100;
 
-                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, bout);
-                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream);
+                //croppedBmp.compress(Bitmap.CompressFormat.JPEG, quality, bout);
+                croppedBmp.compress(Bitmap.CompressFormat.JPEG, quality, outputStream);
+                //bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream);
 
                 outputStream.flush();
                 outputStream.close();
                 //bout.flush();
-                byte[] byteArray = bout.toByteArray();
-                tcpClient.sendImage(byteArray);
-                bout.close();
+                //byte[] byteArray = bout.toByteArray();
+                //tcpClient.sendImage(byteArray);
+                // file count
+                System.out.println("Streaming number of files...");
+                ByteStream.toStream(os, 1);
+                System.out.println("Done. Streaming file content...");
+                // actual file content
+                //ByteStream.toStream(os,in,bitmap.getByteCount());
+                ByteStream.toStream(os, new File(filePath));
+                System.out.println("Done");
+                //bout.flush();
+                //bout.close();
 
                 // receive the processed image
-                tcpClient.receiveImage();
+                //tcpClient.receiveImage();
                 //openScreenshot(imageFile);
                 // show the image
                 //Bitmap bitmap = BitmapFactory.decodeFile(mPath);
@@ -1054,8 +1106,8 @@ public class Camera2BasicFragment extends Fragment
             //outputStream.flush();
             //outputStream.close();
             //bout.flush();
-            byte[] byteArray = bout.toByteArray();
-            this.tcpClient.sendImage(byteArray);
+            //byte[] byteArray = bout.toByteArray();
+            //this.tcpClient.sendImage(byteArray);
             bout.close();
 
             //openScreenshot(imageFile);
@@ -1071,7 +1123,12 @@ public class Camera2BasicFragment extends Fragment
     class SocketConnectTask extends AsyncTask<String, Void, Integer> {
 
         protected Integer doInBackground(String... urls) {
-            tcpClient.setup("128.2.213.223", 8888);
+            try {
+                socket = new Socket("128.2.213.223", 8888);
+                os     = socket.getOutputStream();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             return 0;
         }
 
@@ -1081,4 +1138,41 @@ public class Camera2BasicFragment extends Fragment
         }
     }
 
+    class SocketReceiveTask extends AsyncTask<String, Void, String> {
+
+        protected String doInBackground(String... urls) {
+            String mPath = null;
+            try {
+                System.out.println("------------Start processing image batch-------------");
+                InputStream in = socket.getInputStream();
+
+                int nof_files = ByteStream.toInt(in);
+                System.out.println("Number of files in this batch: " + nof_files);
+                for (int cur_file = 0; cur_file < nof_files; cur_file++) {
+                    //String file_name = ByteStream.toString(in);
+
+                    Date now = new Date();
+                    SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd_hh:mm:ss.SSS");
+                    String dateToStr = format.format(now);
+                    //android.text.format.DateFormat.format("yyyy-MM-dd_hh:mm:ss", now);
+                    // image naming and path  to include sd card  appending name you choose for file
+                    mPath = Environment.getExternalStorageDirectory().toString() + "/rcvd-" + dateToStr + ".jpg";
+
+                    System.out.println("Reading file from socket.");
+                    ByteStream.toFile(in, new File(mPath));
+                    System.out.println("File " + mPath + " saved to disk.");
+                }
+                System.out.println("-------------This batch of images processed------------");
+
+            } catch (java.lang.Exception ex) {
+                ex.printStackTrace(System.out);
+            }
+            return mPath;
+        }
+
+        protected void onPostExecute() {
+            // TODO: check this.exception
+            // TODO: do something with the feed
+        }
+    }
 }
