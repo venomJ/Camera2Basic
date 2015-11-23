@@ -87,6 +87,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class Camera2BasicFragment extends Fragment
         implements View.OnClickListener, FragmentCompat.OnRequestPermissionsResultCallback {
@@ -145,6 +146,8 @@ public class Camera2BasicFragment extends Fragment
      */
     private static Socket socket;
     private static OutputStream os;
+
+    private static LinkedBlockingQueue<String> imagePathList = new LinkedBlockingQueue<String>(10);
 
     /**
      * {@link TextureView.SurfaceTextureListener} handles several lifecycle events on a
@@ -252,6 +255,9 @@ public class Camera2BasicFragment extends Fragment
      */
     private File mFile;
 
+
+    private static int imageCount = 0;
+
     /**
      * This a callback object for the {@link ImageReader}. "onImageAvailable" will be called when a
      * still image is ready to be saved.
@@ -270,6 +276,7 @@ public class Camera2BasicFragment extends Fragment
             mFile = new File(mPath);
 
             mBackgroundHandler.post(new ImageSaver(reader.acquireNextImage(), mFile));
+            ++ imageCount;
         }
 
     };
@@ -432,7 +439,7 @@ public class Camera2BasicFragment extends Fragment
         imageDisplay = (CustomImageVIew)view.findViewById(R.id.imgView);
         //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
         imageDisplay.setImageResource(R.drawable.app);
-        //new SocketConnectTask().execute();
+        new SocketConnectTask().execute();
     }
 
     @Override
@@ -744,8 +751,11 @@ public class Camera2BasicFragment extends Fragment
             // This is how to tell the camera to lock focus.
             mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
                     CameraMetadata.CONTROL_AF_TRIGGER_START);
+            //mPreviewRequestBuilder.set(CaptureRequest.CONTROL_CAPTURE_INTENT,
+            //        CameraMetadata.CONTROL_AF_STATE_ACTIVE_SCAN);
             // Tell #mCaptureCallback to wait for the lock.
             mState = STATE_WAITING_LOCK;
+            //mState = STATE_PREVIEW;
             mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback,
                     mBackgroundHandler);
         } catch (CameraAccessException e) {
@@ -776,6 +786,39 @@ public class Camera2BasicFragment extends Fragment
      * {@link #mCaptureCallback} from both {@link #lockFocus()}.
      */
     private void captureStillPicture() {
+        /*
+        try {
+            List<CaptureRequest> captureList = new ArrayList<CaptureRequest>();
+            mPreviewRequestBuilder.addTarget(mImageReader.getSurface());
+
+            for (int i=0;i<5;i++) {
+                captureList.add(mPreviewRequestBuilder.build());
+            }
+            imageCount = 0;
+            mCaptureSession.stopRepeating();
+            CameraCaptureSession.CaptureCallback CaptureCallback
+                    = new CameraCaptureSession.CaptureCallback() {
+
+                @Override
+                public void onCaptureCompleted(@NonNull CameraCaptureSession session,
+                                               @NonNull CaptureRequest request,
+                                               @NonNull TotalCaptureResult result) {
+                    //dshowToast("Saved: " + mFile);
+                    //Log.d(TAG, mFile.toString());
+                    imageCount++;
+                    if (imageCount >= 5)
+                        unlockFocus();
+                    //lastImageSaved = mFile.toString();
+                    //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
+                    //imageDisplay.setImageBitmap(bitmap);
+                }
+            };
+            mCaptureSession.captureBurst(captureList, CaptureCallback, null);
+            mPreviewRequestBuilder.removeTarget(mImageReader.getSurface());
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+        */
         try {
             final Activity activity = getActivity();
             if (null == activity || null == mCameraDevice) {
@@ -783,7 +826,9 @@ public class Camera2BasicFragment extends Fragment
             }
             // This is the CaptureRequest.Builder that we use to take a picture.
             final CaptureRequest.Builder captureBuilder =
-                    mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+                    //mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+                    mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG);
+
             captureBuilder.addTarget(mImageReader.getSurface());
 
             // Use the same AE and AF modes as the preview.
@@ -814,6 +859,7 @@ public class Camera2BasicFragment extends Fragment
 
             mCaptureSession.stopRepeating();
             mCaptureSession.capture(captureBuilder.build(), CaptureCallback, null);
+            //mCaptureSession.captureBurst(captureBuilder.build(), CaptureCallback, null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -846,16 +892,25 @@ public class Camera2BasicFragment extends Fragment
         switch (view.getId()) {
             case R.id.picture: {
                 // connect to TCP server
-                new SocketConnectTask().execute();
+                //new SocketConnectTask().execute();
 
                 for (int i = 0 ; i < 5 ; ++ i) {
                     takePicture();
                     try {
-                        Thread.sleep(1000);
+                        Thread.sleep(750);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
                 }
+
+                //takeScreenshot();
+                //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
+                //imageDisplay.setImageBitmap(bitmap);
+
+                // send task
+                new SocketSendTask().execute();
+
+                // receive task
                 String mPath = null;
                 try {
                     mPath = new SocketReceiveTask().execute().get();
@@ -868,9 +923,7 @@ public class Camera2BasicFragment extends Fragment
                     Bitmap bitmap = BitmapFactory.decodeFile(mPath);
                     imageDisplay.setImageBitmap(bitmap);
                 }
-                //takeScreenshot();
-                //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
-                //imageDisplay.setImageBitmap(bitmap);
+
                 break;
             }
             case R.id.info: {
@@ -980,6 +1033,7 @@ public class Camera2BasicFragment extends Fragment
                 //byte[] byteArray = bout.toByteArray();
                 //tcpClient.sendImage(byteArray);
                 // file count
+                /* Deleted by Joel Nov 22 2015
                 System.out.println("Streaming number of files...");
                 ByteStream.toStream(os, 1);
                 System.out.println("Done. Streaming file content...");
@@ -987,6 +1041,9 @@ public class Camera2BasicFragment extends Fragment
                 //ByteStream.toStream(os,in,bitmap.getByteCount());
                 ByteStream.toStream(os, new File(filePath));
                 System.out.println("Done");
+                */
+                imagePathList.put(filePath);
+                System.out.println("Add " + filePath + " to queue");
                 //bout.flush();
                 //bout.close();
 
@@ -1138,12 +1195,48 @@ public class Camera2BasicFragment extends Fragment
         }
     }
 
+    class SocketSendTask extends AsyncTask<String, Void, String> {
+
+        protected String doInBackground(String... urls) {
+            String mPath = null;
+            try {
+                System.out.println("------------Start sending image batch-------------");
+                //int windowSize = 5;
+                // How many files?
+                try {
+                    int window = imagePathList.size();
+                    ByteStream.toStream(os, window);
+                    int cur_file = 0;
+                    for (; cur_file< window; cur_file++) {
+
+                        ByteStream.toStream(os, new File(imagePathList.take()));
+                        System.out.println("File " + cur_file + " sent.");
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                System.out.println("-------------This batch of images sent------------");
+
+            } catch (java.lang.Exception ex) {
+                ex.printStackTrace(System.out);
+            }
+            return mPath;
+        }
+
+        protected void onPostExecute() {
+            // TODO: check this.exception
+            // TODO: do something with the feed
+        }
+    }
+
     class SocketReceiveTask extends AsyncTask<String, Void, String> {
 
         protected String doInBackground(String... urls) {
             String mPath = null;
             try {
-                System.out.println("------------Start processing image batch-------------");
+                System.out.println("------------Start receiving image batch-------------");
                 InputStream in = socket.getInputStream();
 
                 int nof_files = ByteStream.toInt(in);
@@ -1162,7 +1255,7 @@ public class Camera2BasicFragment extends Fragment
                     ByteStream.toFile(in, new File(mPath));
                     System.out.println("File " + mPath + " saved to disk.");
                 }
-                System.out.println("-------------This batch of images processed------------");
+                System.out.println("-------------This batch of images received------------");
 
             } catch (java.lang.Exception ex) {
                 ex.printStackTrace(System.out);
