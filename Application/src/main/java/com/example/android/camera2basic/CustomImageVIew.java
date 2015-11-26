@@ -229,4 +229,10 @@ public class CustomImageVIew extends ImageView implements View.OnTouchListener {
     }
 
 
+    public void setZoomLevel(float zoomLevel) {
+        float midX = (mViewWidth / 2);
+        float midY = (mViewHeight / 2);
+        matrix.postScale(zoomLevel, zoomLevel, midX,midY);
+        this.setImageMatrix(matrix);
+    }
 }

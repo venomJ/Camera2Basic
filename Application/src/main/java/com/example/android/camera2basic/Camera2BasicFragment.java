@@ -147,7 +147,7 @@ public class Camera2BasicFragment extends Fragment
     private static Socket socket;
     private static OutputStream os;
 
-    private static LinkedBlockingQueue<String> imagePathList = new LinkedBlockingQueue<String>(10);
+    private static LinkedBlockingQueue<String> imagePathList = new LinkedBlockingQueue<>(10);
 
     /**
      * {@link TextureView.SurfaceTextureListener} handles several lifecycle events on a
@@ -173,6 +173,7 @@ public class Camera2BasicFragment extends Fragment
 
         @Override
         public void onSurfaceTextureUpdated(SurfaceTexture texture) {
+
         }
 
     };
@@ -276,7 +277,7 @@ public class Camera2BasicFragment extends Fragment
             mFile = new File(mPath);
 
             mBackgroundHandler.post(new ImageSaver(reader.acquireNextImage(), mFile));
-            ++ imageCount;
+            ++imageCount;
         }
 
     };
@@ -436,7 +437,7 @@ public class Camera2BasicFragment extends Fragment
         //view.findViewById(R.id.info).setOnClickListener(this);
         mTextureView = (AutoFitTextureView) view.findViewById(R.id.texture);
         //imageDisplay = (ImageView)view.findViewById(R.id.imgView);
-        imageDisplay = (CustomImageVIew)view.findViewById(R.id.imgView);
+        imageDisplay = (CustomImageVIew) view.findViewById(R.id.imgView);
         //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
         imageDisplay.setImageResource(R.drawable.app);
         new SocketConnectTask().execute();
@@ -584,6 +585,16 @@ public class Camera2BasicFragment extends Fragment
             if (!mCameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
                 throw new RuntimeException("Time out waiting to lock camera opening.");
             }
+//            if (this.getContext().checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+//
+//
+//                //requestCameraPermission();
+//                getActivity().requestPermissions(
+//                        new String[]{Manifest.permission.CAMERA},
+//                        1);
+//
+//                return;
+//            }
             manager.openCamera(mCameraId, mStateCallback, mBackgroundHandler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
@@ -725,9 +736,17 @@ public class Camera2BasicFragment extends Fragment
         if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
             bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
             matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL);
-            float scale = Math.max(
-                    (float) viewHeight / mPreviewSize.getHeight(),
-                    (float) viewWidth / mPreviewSize.getWidth());
+//            float scale = Math.max(
+//                    (float) viewHeight / mPreviewSize.getHeight(),
+//                    (float) viewWidth / mPreviewSize.getWidth());
+
+            //We want to compare with the right hand side
+            scale = 4.0f;
+
+
+
+            float midX = (mPreviewSize.getHeight() / 2);
+            float midY = (mPreviewSize.getWidth() / 2);
             matrix.postScale(scale, scale, centerX, centerY);
             matrix.postRotate(90 * (rotation - 2), centerX, centerY);
         } else if (Surface.ROTATION_180 == rotation) {
@@ -742,6 +761,32 @@ public class Camera2BasicFragment extends Fragment
     private void takePicture() {
         lockFocus();
     }
+
+    private void scaleImage(){
+        Activity activity = getActivity();
+        if (null == mTextureView || null == mPreviewSize || null == activity) {
+            return;
+        }
+       // int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
+        Matrix matrix = new Matrix();
+//        RectF viewRect = new RectF(0, 0, viewWidth, viewHeight);
+        RectF bufferRect = new RectF(0, 0, mPreviewSize.getHeight(), mPreviewSize.getWidth());
+//        float centerX = viewRect.centerX();
+//        float centerY = viewRect.centerY();
+        // if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
+//            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
+
+//            float scale = Math.max(
+//                    (float) viewHeight / mPreviewSize.getHeight(),
+//                    (float) viewWidth / mPreviewSize.getWidth());
+            matrix.postScale(4f, 4f);
+//            matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL);
+
+//            matrix.postRotate(90 * (rotation - 2), centerX, centerY);
+
+        mTextureView.setTransform(matrix);
+    }
+
 
     /**
      * Lock the focus as the first step for a still image capture.
@@ -897,7 +942,7 @@ public class Camera2BasicFragment extends Fragment
                 for (int i = 0 ; i < 5 ; ++ i) {
                     takePicture();
                     try {
-                        Thread.sleep(750);
+                        Thread.sleep(1000);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
@@ -911,18 +956,16 @@ public class Camera2BasicFragment extends Fragment
                 new SocketSendTask().execute();
 
                 // receive task
-                String mPath = null;
-                try {
-                    mPath = new SocketReceiveTask().execute().get();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                } catch (ExecutionException e) {
-                    e.printStackTrace();
-                }
-                if (mPath != null) {
-                    Bitmap bitmap = BitmapFactory.decodeFile(mPath);
-                    imageDisplay.setImageBitmap(bitmap);
-                }
+
+
+                new SocketReceiveTask().execute();
+
+
+
+
+
+
+
 
                 break;
             }
@@ -1204,10 +1247,10 @@ public class Camera2BasicFragment extends Fragment
                 //int windowSize = 5;
                 // How many files?
                 try {
-                    int window = imagePathList.size();
+                    int window = 5;
                     ByteStream.toStream(os, window);
                     int cur_file = 0;
-                    for (; cur_file< window; cur_file++) {
+                    for (; cur_file< 5; cur_file++) {
 
                         ByteStream.toStream(os, new File(imagePathList.take()));
                         System.out.println("File " + cur_file + " sent.");
@@ -1233,8 +1276,9 @@ public class Camera2BasicFragment extends Fragment
 
     class SocketReceiveTask extends AsyncTask<String, Void, String> {
 
+        String mPath = null;
+
         protected String doInBackground(String... urls) {
-            String mPath = null;
             try {
                 System.out.println("------------Start receiving image batch-------------");
                 InputStream in = socket.getInputStream();
@@ -1262,10 +1306,12 @@ public class Camera2BasicFragment extends Fragment
             }
             return mPath;
         }
-
-        protected void onPostExecute() {
-            // TODO: check this.exception
-            // TODO: do something with the feed
+        @Override
+        protected void onPostExecute(String result) {
+            Bitmap bitmap = BitmapFactory.decodeFile(mPath);
+            imageDisplay.setImageBitmap(bitmap);
+            //Set the initial zoom. Left hand side is 4x so 3x for right hand side would be good.
+            imageDisplay.setZoomLevel(3.0f);
         }
     }
 }
