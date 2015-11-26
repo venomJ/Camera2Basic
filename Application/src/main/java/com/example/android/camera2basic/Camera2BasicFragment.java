@@ -456,6 +456,8 @@ public class Camera2BasicFragment extends Fragment
         imageDisplay = (CustomImageVIew) view.findViewById(R.id.imgView);
         //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
         imageDisplay.setImageResource(R.drawable.app);
+        //Set the initial zoom. Left hand side is 4x so 3x for right hand side would be good.
+        imageDisplay.setZoomLevel(3.0f);
 
         new SocketConnectTask().execute();
         SocketSendTask st = new SocketSendTask();
@@ -691,7 +693,10 @@ public class Camera2BasicFragment extends Fragment
             mPreviewRequestBuilder
                     = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             mPreviewRequestBuilder.addTarget(surface);
-            mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, new Rect(1680, 1260, 2480, 1860));
+//            mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, new Rect(1680, 1260, 2480, 1860)); //3120 x 4160 => 1560 2080 800x 600
+
+            mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, new Rect( 1780, 1335, 2380, 1785)); //3120 x 4160 => 1560 2080 600x 450
+
             //mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION,new Rect(0, 0, 600, 800));
 
             // Here, we create a CameraCaptureSession for camera preview.
@@ -765,7 +770,7 @@ public class Camera2BasicFragment extends Fragment
 //                    (float) viewWidth / mPreviewSize.getWidth());
 
             //We want to compare with the right hand side
-            float scale = 4.0f;
+            float scale = 2.0f;
 
 
 
@@ -1371,8 +1376,7 @@ public class Camera2BasicFragment extends Fragment
         protected void onPostExecute(String result) {
             Bitmap bitmap = BitmapFactory.decodeFile(mPath);
             imageDisplay.setImageBitmap(bitmap);
-            //Set the initial zoom. Left hand side is 4x so 3x for right hand side would be good.
-            imageDisplay.setZoomLevel(3.0f);
+
             System.out.print("Receiving task finished. Running send task.");
             new SocketSendTask().execute();
         }
