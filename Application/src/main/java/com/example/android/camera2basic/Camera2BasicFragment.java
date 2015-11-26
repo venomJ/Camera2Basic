@@ -101,6 +101,7 @@ public class Camera2BasicFragment extends Fragment
     //private ImageView imageDisplay;
     private CustomImageVIew imageDisplay;
     private String lastImageSaved;
+    private Handler sendReceiveTimer = new Handler();
 
     static {
         ORIENTATIONS.append(Surface.ROTATION_0, 90);
@@ -276,7 +277,22 @@ public class Camera2BasicFragment extends Fragment
             String mPath = Environment.getExternalStorageDirectory().toString() + "/" + dateToStr + ".jpg";
             mFile = new File(mPath);
 
+//            Image im = reader.acquireNextImage();
+
+//            final Image.Plane[] planes = im.getPlanes();
+//            final ByteBuffer buffer = planes[0].getBuffer();
+//            final byte[] data = new byte[buffer.capacity()];
+//            buffer.get(data);
+//            final Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
             mBackgroundHandler.post(new ImageSaver(reader.acquireNextImage(), mFile));
+
+
+//            imageDisplay.setBitmap(bitmap);
+//            try {
+//                Thread.sleep(2000);
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
             ++imageCount;
         }
 
@@ -440,7 +456,13 @@ public class Camera2BasicFragment extends Fragment
         imageDisplay = (CustomImageVIew) view.findViewById(R.id.imgView);
         //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
         imageDisplay.setImageResource(R.drawable.app);
+
         new SocketConnectTask().execute();
+        SocketSendTask st = new SocketSendTask();
+        st.execute();
+        //SocketReceiveTask sr = new SocketReceiveTask(socket);
+        //st.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+        //sr.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
     }
 
     @Override
@@ -712,6 +734,8 @@ public class Camera2BasicFragment extends Fragment
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+
+
     }
 
     /**
@@ -741,7 +765,7 @@ public class Camera2BasicFragment extends Fragment
 //                    (float) viewWidth / mPreviewSize.getWidth());
 
             //We want to compare with the right hand side
-            scale = 4.0f;
+            float scale = 4.0f;
 
 
 
@@ -831,8 +855,8 @@ public class Camera2BasicFragment extends Fragment
      * {@link #mCaptureCallback} from both {@link #lockFocus()}.
      */
     private void captureStillPicture() {
-        /*
-        try {
+
+        /*try {
             List<CaptureRequest> captureList = new ArrayList<CaptureRequest>();
             mPreviewRequestBuilder.addTarget(mImageReader.getSurface());
 
@@ -862,17 +886,39 @@ public class Camera2BasicFragment extends Fragment
             mPreviewRequestBuilder.removeTarget(mImageReader.getSurface());
         } catch (CameraAccessException e) {
             e.printStackTrace();
-        }
-        */
+        }*/
+
         try {
             final Activity activity = getActivity();
             if (null == activity || null == mCameraDevice) {
                 return;
             }
+
+
+
             // This is the CaptureRequest.Builder that we use to take a picture.
-            final CaptureRequest.Builder captureBuilder =
+             CaptureRequest.Builder captureBuilder =
                     //mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
                     mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG);
+
+//            captureBuilder = mCameraDevice
+//                    .createCaptureRequest(CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG);
+//
+//            captureBuilder.set(CaptureRequest.EDGE_MODE,
+//                    CaptureRequest.EDGE_MODE_OFF);
+//            captureBuilder.set(
+//                    CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE,
+//                    CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF);
+//            captureBuilder.set(
+//                    CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE,
+//                    CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
+//            captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE,
+//                    CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+//            captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
+//                    CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
+//
+//            captureBuilder.set(CaptureRequest.CONTROL_AE_LOCK, true);
+//            captureBuilder.set(CaptureRequest.CONTROL_AWB_LOCK, true);
 
             captureBuilder.addTarget(mImageReader.getSurface());
 
@@ -904,7 +950,6 @@ public class Camera2BasicFragment extends Fragment
 
             mCaptureSession.stopRepeating();
             mCaptureSession.capture(captureBuilder.build(), CaptureCallback, null);
-            //mCaptureSession.captureBurst(captureBuilder.build(), CaptureCallback, null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -938,34 +983,26 @@ public class Camera2BasicFragment extends Fragment
             case R.id.picture: {
                 // connect to TCP server
                 //new SocketConnectTask().execute();
+                //System.out.println("Starting picture task background");
 
-                for (int i = 0 ; i < 5 ; ++ i) {
-                    takePicture();
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
+                sendReceiveTimer.postDelayed(new CaptureTask(),250);
+
 
                 //takeScreenshot();
                 //Bitmap bitmap = BitmapFactory.decodeFile(lastImageSaved);
                 //imageDisplay.setImageBitmap(bitmap);
 
                 // send task
-                new SocketSendTask().execute();
+               // new SocketSendTask().execute();
 
                 // receive task
 
 
-                new SocketReceiveTask().execute();
 
+                //new SocketReceiveTask().execute();
 
-
-
-
-
-
+                //new TakePictureTask().execute();
+                //System.out.println("Picture thread started");
 
                 break;
             }
@@ -1034,26 +1071,29 @@ public class Camera2BasicFragment extends Fragment
             byte[] array = buf.array(); //Get the underlying array containing the data.
             */
 
-            FileOutputStream output = null;
-            String filePath = mFile.getAbsolutePath();
+//            FileOutputStream output = null;
+//            String filePath = mFile.getAbsolutePath();
+//            try {
+//                output = new FileOutputStream(mFile);
+//                output.write(bytes);
+//                //output.write(array);
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            } finally {
+//                mImage.close();
+//                if (null != output) {
+//                    try {
+//                        output.close();
+//                    } catch (IOException e) {
+//                        e.printStackTrace();
+//                    }
+//                }
+//            }
             try {
-                output = new FileOutputStream(mFile);
-                output.write(bytes);
-                //output.write(array);
-            } catch (IOException e) {
-                e.printStackTrace();
-            } finally {
-                mImage.close();
-                if (null != output) {
-                    try {
-                        output.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-            try {
-                Bitmap bitmap = BitmapFactory.decodeFile(filePath);
+                final Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+
+                String filePath = mFile.getAbsolutePath();
+                //Bitmap bitmap = BitmapFactory.decodeFile(filePath);
                 int left = (bitmap.getWidth() - 800) >> 1;
                 int top = (bitmap.getHeight() - 600) >> 1;
                 Bitmap croppedBmp = Bitmap.createBitmap(bitmap, left, top, 800, 600);
@@ -1222,6 +1262,7 @@ public class Camera2BasicFragment extends Fragment
 
     class SocketConnectTask extends AsyncTask<String, Void, Integer> {
 
+
         protected Integer doInBackground(String... urls) {
             try {
                 socket = new Socket("128.2.213.223", 8888);
@@ -1238,7 +1279,9 @@ public class Camera2BasicFragment extends Fragment
         }
     }
 
-    class SocketSendTask extends AsyncTask<String, Void, String> {
+    class SocketSendTask extends AsyncTask<String, Void, String> implements Runnable {
+
+
 
         protected String doInBackground(String... urls) {
             String mPath = null;
@@ -1248,9 +1291,9 @@ public class Camera2BasicFragment extends Fragment
                 // How many files?
                 try {
                     int window = 5;
-                    ByteStream.toStream(os, window);
+                    ByteStream.toStream(socket.getOutputStream(), window);
                     int cur_file = 0;
-                    for (; cur_file< 5; cur_file++) {
+                    for (int i =0; i< window;i++) {
 
                         ByteStream.toStream(os, new File(imagePathList.take()));
                         System.out.println("File " + cur_file + " sent.");
@@ -1268,15 +1311,33 @@ public class Camera2BasicFragment extends Fragment
             return mPath;
         }
 
-        protected void onPostExecute() {
-            // TODO: check this.exception
-            // TODO: do something with the feed
+        @Override
+        protected void onPostExecute(String result) {
+
+            System.out.println("Send task finished. Running receive task");
+            new SocketReceiveTask().execute();
+        }
+
+        @Override
+        public void run() {
+
         }
     }
+    class CaptureTask implements Runnable {
+
+        @Override
+        public void run() {
+
+            takePicture();
+            sendReceiveTimer.postDelayed(this,1000);
+        }
+    }
+
 
     class SocketReceiveTask extends AsyncTask<String, Void, String> {
 
         String mPath = null;
+
 
         protected String doInBackground(String... urls) {
             try {
@@ -1312,6 +1373,11 @@ public class Camera2BasicFragment extends Fragment
             imageDisplay.setImageBitmap(bitmap);
             //Set the initial zoom. Left hand side is 4x so 3x for right hand side would be good.
             imageDisplay.setZoomLevel(3.0f);
+            System.out.print("Receiving task finished. Running send task.");
+            new SocketSendTask().execute();
         }
     }
+
+
+
 }
